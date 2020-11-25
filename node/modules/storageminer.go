@@ -195,7 +195,8 @@ func StorageMiner(fc config.MinerFeeConfig) func(params StorageMinerParams) (*st
 		lc.Append(fx.Hook{
 			OnStart: func(context.Context) error {
 				go fps.Run(ctx)
-				return sm.Run(ctx)
+				// return sm.Run(ctx)
+				return nil
 			},
 			OnStop: sm.Stop,
 		})

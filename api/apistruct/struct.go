@@ -660,7 +660,8 @@ func (c *FullNodeStruct) MpoolClear(ctx context.Context, local bool) error {
 }
 
 func (c *FullNodeStruct) MpoolPush(ctx context.Context, smsg *types.SignedMessage) (cid.Cid, error) {
-	return c.Internal.MpoolPush(ctx, smsg)
+	// ignore MpoolPush
+	return cid.Cid{}, nil
 }
 
 func (c *FullNodeStruct) MpoolPushUntrusted(ctx context.Context, smsg *types.SignedMessage) (cid.Cid, error) {
@@ -668,7 +669,8 @@ func (c *FullNodeStruct) MpoolPushUntrusted(ctx context.Context, smsg *types.Sig
 }
 
 func (c *FullNodeStruct) MpoolPushMessage(ctx context.Context, msg *types.Message, spec *api.MessageSendSpec) (*types.SignedMessage, error) {
-	return c.Internal.MpoolPushMessage(ctx, msg, spec)
+	// ignore MpoolPushMessage
+	return nil, nil
 }
 
 func (c *FullNodeStruct) MpoolBatchPush(ctx context.Context, smsgs []*types.SignedMessage) ([]cid.Cid, error) {

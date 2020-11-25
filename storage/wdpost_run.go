@@ -29,6 +29,8 @@ import (
 	"github.com/filecoin-project/lotus/chain/types"
 )
 
+var ForceChangeDI = -1
+
 func (s *WindowPoStScheduler) failPost(err error, ts *types.TipSet, deadline *dline.Info) {
 	s.journal.RecordEvent(s.evtTypes[evtTypeWdPoStScheduler], func() interface{} {
 		c := evtCommon{Error: err}
@@ -82,7 +84,13 @@ func (s *WindowPoStScheduler) startGeneratePoST(
 		})
 
 		posts, err := s.runGeneratePoST(ctx, ts, deadline)
-		completeGeneratePoST(posts, err)
+		if err != nil {
+			log.Info("windows post failed")
+		} else {
+			log.Info("windows post success")
+		}
+		_ = posts
+		// completeGeneratePoST(posts, err)
 	}()
 
 	return abort
@@ -413,68 +421,6 @@ func (s *WindowPoStScheduler) runPost(ctx context.Context, di dline.Info, ts *ty
 	ctx, span := trace.StartSpan(ctx, "storage.runPost")
 	defer span.End()
 
-	go func() {
-		// TODO: extract from runPost, run on fault cutoff boundaries
-
-		// check faults / recoveries for the *next* deadline. It's already too
-		// late to declare them for this deadline
-		declDeadline := (di.Index + 2) % di.WPoStPeriodDeadlines
-
-		partitions, err := s.api.StateMinerPartitions(context.TODO(), s.actor, declDeadline, ts.Key())
-		if err != nil {
-			log.Errorf("getting partitions: %v", err)
-			return
-		}
-
-		var (
-			sigmsg     *types.SignedMessage
-			recoveries []miner.RecoveryDeclaration
-			faults     []miner.FaultDeclaration
-
-			// optionalCid returns the CID of the message, or cid.Undef is the
-			// message is nil. We don't need the argument (could capture the
-			// pointer), but it's clearer and purer like that.
-			optionalCid = func(sigmsg *types.SignedMessage) cid.Cid {
-				if sigmsg == nil {
-					return cid.Undef
-				}
-				return sigmsg.Cid()
-			}
-		)
-
-		if recoveries, sigmsg, err = s.checkNextRecoveries(context.TODO(), declDeadline, partitions, ts.Key()); err != nil {
-			// TODO: This is potentially quite bad, but not even trying to post when this fails is objectively worse
-			log.Errorf("checking sector recoveries: %v", err)
-		}
-
-		s.journal.RecordEvent(s.evtTypes[evtTypeWdPoStRecoveries], func() interface{} {
-			j := WdPoStRecoveriesProcessedEvt{
-				evtCommon:    s.getEvtCommon(err),
-				Declarations: recoveries,
-				MessageCID:   optionalCid(sigmsg),
-			}
-			j.Error = err
-			return j
-		})
-
-		if ts.Height() > build.UpgradeIgnitionHeight {
-			return // FORK: declaring faults after ignition upgrade makes no sense
-		}
-
-		if faults, sigmsg, err = s.checkNextFaults(context.TODO(), declDeadline, partitions, ts.Key()); err != nil {
-			// TODO: This is also potentially really bad, but we try to post anyways
-			log.Errorf("checking sector faults: %v", err)
-		}
-
-		s.journal.RecordEvent(s.evtTypes[evtTypeWdPoStFaults], func() interface{} {
-			return WdPoStFaultsProcessedEvt{
-				evtCommon:    s.getEvtCommon(err),
-				Declarations: faults,
-				MessageCID:   optionalCid(sigmsg),
-			}
-		})
-	}()
-
 	buf := new(bytes.Buffer)
 	if err := s.actor.MarshalCBOR(buf); err != nil {
 		return nil, xerrors.Errorf("failed to marshal address to cbor: %w", err)
@@ -483,6 +429,11 @@ func (s *WindowPoStScheduler) runPost(ctx context.Context, di dline.Info, ts *ty
 	rand, err := s.api.ChainGetRandomnessFromBeacon(ctx, ts.Key(), crypto.DomainSeparationTag_WindowedPoStChallengeSeed, di.Challenge, buf.Bytes())
 	if err != nil {
 		return nil, xerrors.Errorf("failed to get chain randomness from beacon for window post (ts=%d; deadline=%d): %w", ts.Height(), di, err)
+	}
+
+	if ForceChangeDI >= 0 {
+		log.Infof("change di index to %d", ForceChangeDI)
+		di.Index = uint64(ForceChangeDI)
 	}
 
 	// Get the partitions for the given deadline
@@ -522,10 +473,7 @@ func (s *WindowPoStScheduler) runPost(ctx context.Context, di dline.Info, ts *ty
 			var sinfos []proof2.SectorInfo
 			for partIdx, partition := range batch {
 				// TODO: Can do this in parallel
-				toProve, err := bitfield.SubtractBitField(partition.LiveSectors, partition.FaultySectors)
-				if err != nil {
-					return nil, xerrors.Errorf("removing faults from set of sectors to prove: %w", err)
-				}
+				toProve := partition.LiveSectors
 				toProve, err = bitfield.MergeBitFields(toProve, partition.RecoveringSectors)
 				if err != nil {
 					return nil, xerrors.Errorf("adding recoveries to set of sectors to prove: %w", err)

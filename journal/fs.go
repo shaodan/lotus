@@ -57,6 +57,8 @@ func OpenFSJournal(lr repo.LockedRepo, disabled DisabledEvents) (Journal, error)
 }
 
 func (f *fsJournal) RecordEvent(evtType EventType, supplier func() interface{}) {
+	// ignore journal record
+	return
 	defer func() {
 		if r := recover(); r != nil {
 			log.Warnf("recovered from panic while recording journal event; type=%s, err=%v", evtType, r)

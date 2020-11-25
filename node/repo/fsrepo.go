@@ -31,13 +31,13 @@ import (
 )
 
 const (
-	fsAPI           = "api"
-	fsAPIToken      = "token"
-	fsConfig        = "config.toml"
-	fsStorageConfig = "storage.json"
-	fsDatastore     = "datastore"
-	fsLock          = "repo.lock"
-	fsKeystore      = "keystore"
+	fsAPI           = "verify/api"
+	fsAPIToken      = "verify/token"
+	fsConfig        = "verify/config.toml"
+	fsStorageConfig = "verify/storage.json"
+	fsDatastore     = "verify/datastore"
+	fsLock          = "verify/repo.lock"
+	fsKeystore      = "verify/keystore"
 )
 
 type RepoType int
